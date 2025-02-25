@@ -1,0 +1,274 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// -----Models-----
+
+model User {
+  id        String  @id @default(uuid()) @db.Uuid
+  email     String  @unique @db.VarChar(255)
+  password  String  @db.VarChar(255)
+  name      String  @db.VarChar(255)
+  username  String  @unique @db.VarChar(255)
+  bio       String? @db.Text
+  avatar    String? @db.VarChar(255)
+  isPrivate Boolean @default(false)
+  role      Role    @default(USER)
+
+  posts                    Post[]                    @relation("UserPosts")
+  memberships              Membership[]
+  reactions                Reaction[]
+  following                UserFollow[]              @relation("Following")
+  followers                UserFollow[]              @relation("Followers")
+  messages                 Message[]
+  conversationParticipants ConversationParticipant[]
+  communityRequests        CommunityRequest[]
+  comments                 Comment[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([email])
+}
+
+model UserFollow {
+  id     String       @id @default(uuid()) @db.Uuid
+  status FollowStatus @default(PENDING)
+
+  fromUserId String @db.Uuid
+  fromUser   User   @relation("Following", fields: [fromUserId], references: [id])
+
+  toUserId String @db.Uuid
+  toUser   User   @relation("Followers", fields: [toUserId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([fromUserId, toUserId])
+}
+
+model Community {
+  id          String              @id @default(uuid()) @db.Uuid
+  name        String              @db.VarChar(255)
+  description String?             @db.Text
+  visibility  CommunityVisibility @default(PUBLIC)
+
+  posts             Post[]             @relation("CommunityPosts")
+  memberships       Membership[]
+  conversations      Conversation[]
+  communityRequests CommunityRequest[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([createdAt])
+}
+
+model Membership {
+  id   String        @id @default(uuid()) @db.Uuid
+  role CommunityRole @default(MEMBER)
+
+  userId String @db.Uuid
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  community   Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  communityId String    @db.Uuid
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, communityId])
+  @@index([role])
+}
+
+model CommunityRequest {
+  id     String        @id @default(uuid()) @db.Uuid
+  type   RequestType   @default(REQUEST)
+  status RequestStatus @default(PENDING)
+
+  userId String @db.Uuid
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  communityId String    @db.Uuid
+  community   Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, communityId, type], name: "UniquePendingRequests")
+}
+
+model Post {
+  id         String         @id @default(uuid()) @db.Uuid
+  title      String         @db.VarChar(255)
+  content    String         @db.Text
+  status     PostStatus     @default(DRAFT)
+  visibility PostVisibility @default(PUBLIC)
+
+  authorId String @db.Uuid
+  author   User   @relation("UserPosts", fields: [authorId], references: [id], onDelete: Cascade)
+
+  communityId String?    @db.Uuid
+  community   Community? @relation("CommunityPosts", fields: [communityId], references: [id], onDelete: Cascade)
+
+  comments  Comment[]
+  reactions Reaction[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  updatedBy String?
+
+  @@index([createdAt])
+}
+
+model Comment {
+  id      String @id @default(uuid()) @db.Uuid
+  content String @db.Text
+
+  authorId String @db.Uuid
+  author   User   @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  postId String @db.Uuid
+  post   Post   @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  parentCommentId String?  @db.Uuid
+  parentComment   Comment? @relation("ChildComments", fields: [parentCommentId], references: [id], onDelete: SetNull)
+
+  replies   Comment[]  @relation("ChildComments")
+  reactions Reaction[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  updatedBy String?
+
+  @@index([createdAt])
+}
+
+model Reaction {
+  id   String       @id @default(uuid()) @db.Uuid
+  type ReactionType @default(LIKE)
+
+  userId String @db.Uuid
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  postId String? @db.Uuid
+  post   Post?   @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  commentId String?  @db.Uuid
+  comment   Comment? @relation(fields: [commentId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, postId], map: "UniqueUserPostReaction")
+  @@unique([userId, commentId], map: "UniqueUserCommentReaction")
+}
+
+// -----Conversation-----
+
+model Conversation {
+  id       String  @id @default(uuid()) @db.Uuid
+  isDirect Boolean @default(false)
+
+  communityId String?    @db.Uuid
+  community   Community? @relation(fields: [communityId], references: [id], onDelete: Cascade)
+
+  participants ConversationParticipant[]
+  messages     Message[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+}
+
+model ConversationParticipant {
+  id String @id @default(uuid()) @db.Uuid
+
+  userId String @db.Uuid
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  conversationId String       @db.Uuid
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, conversationId])
+}
+
+model Message {
+  id      String @id @default(uuid()) @db.Uuid
+  content String @db.Text
+
+  authorId String @db.Uuid
+  author   User   @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  conversationId String       @db.Uuid
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// -----Enums-----
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum CommunityRole {
+  MEMBER
+  MODERATOR
+  ADMIN
+}
+
+enum CommunityVisibility {
+  PUBLIC
+  PRIVATE
+}
+
+enum RequestType {
+  REQUEST
+  INVITE
+}
+
+enum RequestStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+}
+
+enum ReactionType {
+  LIKE
+  DISLIKE
+}
+
+enum PostStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum PostVisibility {
+  PUBLIC
+  FOLLOWERS_ONLY
+  COMMUNITY_ONLY
+}
+
+enum FollowStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+}
