@@ -34,8 +34,8 @@ export class AuthController {
   @ApiResponse({ status: 401, description: 'Unauthorized.' })
   @UseGuards(JwtAuthGuard)
   @Get('profile')
-  async getProfile(@GetUser() user: { userId: string; username: string, email: string }) {
-    return user;
+  async getProfile(@GetUser() user: { userId: string }) {
+    return this.authService.getUserProfile(user.userId);
   }
 
   @ApiOperation({ summary: 'Update the current user' })

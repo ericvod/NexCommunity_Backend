@@ -21,12 +21,11 @@ export class AuthService {
       const user = await this.prisma.user.create({
         data: { ...createUserDto, password: hashedPassword },
       });
+
       this.logger.log(`User ${user.email} registered successfully.`);
       return {
         message: 'User registered successfully!',
-        userId: user.id,
         username: user.username,
-        email: user.email,
         createdAt: user.createdAt,
       };
     } catch (error) {
@@ -40,13 +39,15 @@ export class AuthService {
       const user = await this.prisma.user.findUnique({
         where: { email: loginDto.email },
       });
+
       if (!user || !(await bcrypt.compare(loginDto.password, user.password))) {
         this.logger.warn(`Invalid login attempt for email: ${loginDto.email}`);
         throw new UnauthorizedException('Invalid credentials');
       }
-      const payload = { sub: user.id, email: user.email };
+
+      const payload = { sub: user.id, username: user.username };
       const token = this.jwtService.sign(payload);
-      this.logger.log(`User ${user.email} logged in successfully.`);
+      this.logger.log(`User ${user.username} logged in successfully.`);
       return { token };
     } catch (error) {
       if (error instanceof UnauthorizedException) {
@@ -54,6 +55,30 @@ export class AuthService {
       }
       this.logger.error(`Error during login: ${error.message}`, error.stack);
       throw new InternalServerErrorException('Failed to login');
+    }
+  }
+
+  async getUserProfile(userId: string) {
+    try {
+      return await this.prisma.user.findMany({
+        where: { 
+          id: userId 
+        },
+        select: {
+          email: true,
+          name: true,
+          username: true,
+          bio: true,
+          avatar: true,
+          isPrivate: true,
+          role: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      })
+    } catch (error) {
+      this.logger.error(`error getting user: ${error.message}`, error.stack);
+      throw new InternalServerErrorException('Failed to get profile')
     }
   }
 
@@ -66,7 +91,6 @@ export class AuthService {
       this.logger.log(`User ${user.email} updated successfully.`);
       return {
         message: 'User updated successfully!',
-        userId: user.id,
       };
     } catch (error) {
       this.logger.error(`Error updating user: ${error.message}`, error.stack);
